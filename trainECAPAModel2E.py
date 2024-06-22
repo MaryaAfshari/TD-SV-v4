@@ -8,7 +8,8 @@ import numpy as np
 import zipfile
 from tools2B import *
 from dataLoader2C import train_loader
-from ECAPAModel2D import ECAPAModel
+#from ECAPAModel2D import ECAPAModel
+from ECAPAModel3 import ECAPAModel
 
 parser = argparse.ArgumentParser(description="ECAPA_trainer")
 
