@@ -31,10 +31,10 @@ parser.add_argument('--enroll_list', type=str, default="/mnt/disk1/data/TdSVC202
 parser.add_argument('--enroll_path', type=str, default="/mnt/disk1/data/TdSVC2024/task1/wav/enrollment", help='The path of the enrollment data')
 parser.add_argument('--musan_path', type=str, default="/data08/Others/musan_split", help='The path to the MUSAN set')
 parser.add_argument('--rir_path', type=str, default="/data08/Others/RIRS_NOISES/simulated_rirs", help='The path to the RIR set')
-parser.add_argument('--save_path', type=str, default="/mnt/disk1/users/afshari/MyEcapaModel2D", help='Path to save the score.txt and models')
+parser.add_argument('--save_path', type=str, default="/mnt/disk1/users/afshari/code9model", help='Path to save the score.txt and models')
 parser.add_argument('--initial_model', type=str, default="", help='Path of the initial_model')
-parser.add_argument('--path_save_model', type=str, default="/mnt/disk1/users/afshari/MyEnrollment2D", help='Path to save the enrollment and models')
-parser.add_argument('--save_eval_path', type=str, default="/mnt/disk1/users/afshari/MyEnrollment2D", help='Path to save the evaluation results, including answer.txt')
+parser.add_argument('--path_save_model', type=str, default="/mnt/disk1/users/afshari/code9enroll", help='Path to save the enrollment and models')
+parser.add_argument('--save_eval_path', type=str, default="/mnt/disk1/users/afshari/code9enroll", help='Path to save the evaluation results, including answer.txt')
 
 # Model and Loss settings
 parser.add_argument('--C', type=int, default=1024, help='Channel size for the speaker encoder')
@@ -70,7 +70,7 @@ if args.initial_model != "":
     print("Model %s loaded from previous state!" % args.initial_model)
     s = ECAPAModel(**vars(args))
     s.load_parameters(args.initial_model)
-    epoch = 1
+    #epoch = 1
 elif len(modelfiles) >= 1:
     print("Model %s loaded from previous state!" % modelfiles[-1])
     epoch = int(os.path.splitext(os.path.basename(modelfiles[-1]))[0][6:]) + 1
@@ -78,7 +78,7 @@ elif len(modelfiles) >= 1:
     s.load_parameters(modelfiles[-1])
 else:
     print("Hello, I called the model ... trainECAPAModel.py")
-    epoch = 1
+    #epoch = 1
     s = ECAPAModel(**vars(args))
     print("Over calling model")
 
@@ -89,7 +89,7 @@ score_file = open(os.path.join(args.save_path, "score.txt"), "a+")
 
 while(1):
     # Training for one epoch
-    if epoch > 40: # I should change it later if I want to train from the base ........5.6.5024
+    if epoch > 0: # I should change it later if I want to train from the base ........5.6.5024
         loss, lr, combined_acc = s.train_network(epoch=epoch, loader=trainLoader)
 
     # Enrollment and Testing every [test_step] epochs
