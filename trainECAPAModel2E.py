@@ -103,8 +103,9 @@ while(1):
         else:
             eval_list = args.eval_eval_list
             
-        scores = s.test_network(test_list=eval_list, test_path=args.eval_path, path_save_model=args.path_save_model)
-        
+        #scores = s.test_network(test_list=eval_list, test_path=args.eval_path, path_save_model=args.path_save_model)
+        EER, minDCF, scores, labels = s.test_network(test_list=eval_list, test_path=args.eval_path, path_save_model=args.path_save_model)
+
         # Save scores to answer.txt
         answer_file_path = 'answer.txt'
         with open(answer_file_path, 'w') as f:
