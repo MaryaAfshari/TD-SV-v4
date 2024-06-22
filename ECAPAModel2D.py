@@ -154,25 +154,48 @@ class ECAPAModel(nn.Module):
             phrase_id = int(parts[1])  # Convert phrase_id to integer
             enroll_files = parts[3:]  # Enrollment file IDs
             embeddings = []
+
             for file in enroll_files:
-                file_name = os.path.join(enroll_path, file)
-                file_name += ".wav"
-                audio, _ = sf.read(file_name)
-                data = torch.FloatTensor(np.stack([audio], axis=0)).cuda()
+                file_name = os.path.join(enroll_path, file) + ".wav"
+                try:
+                    audio, _ = sf.read(file_name)
+                except Exception as e:
+                    print(f"Error reading audio file {file_name}: {e}")
+                    continue
+                #data = torch.FloatTensor(np.stack([audio], axis=0)).cuda()
+                try:
+                    data = torch.FloatTensor(np.stack([audio], axis=0)).cuda()
+                except Exception as e:
+                    print(f"Error converting audio to tensor for file {file_name}: {e}")
+                    continue
+
                 with torch.no_grad():
-                    embedding = self.speaker_encoder.forward(data, aug=False)
-                    embedding = F.normalize(embedding, p=2, dim=1)
+                    #embedding = self.speaker_encoder.forward(data, aug=False)
+                    #embedding = F.normalize(embedding, p=2, dim=1)
+                    try:
+                        embedding = self.speaker_encoder.forward(data, aug=False)
+                        embedding = F.normalize(embedding, p=2, dim=1)
+                    except Exception as e:
+                        print(f"Error generating embedding for file {file_name}: {e}")
+                        continue
                 embeddings.append(embedding)
+            
+            if len(embeddings) == 0:
+                print(f"No valid embeddings found for model_id {model_id}, phrase_id {phrase_id}")
+                continue
+
             avg_embedding = torch.mean(torch.stack(embeddings), dim=0)  # make avg of 3 enrollment file embeddings
             if model_id not in enrollments:
                 enrollments[model_id] = {}
             enrollments[model_id][phrase_id] = avg_embedding
 
+        print("After reading lines in enroll networks ...")
         os.makedirs(path_save_model, exist_ok=True)
 
         # Save enrollments using the provided path
         with open(os.path.join(path_save_model, "enrollments.pkl"), "wb") as f:
             pickle.dump(enrollments, f)
+        print("After writing lines in pkl enroll networks ...")
 
     def test_network(self, test_list, test_path, path_save_model):
         print("hello, this in test network ... ECAPAModel2B.py")
