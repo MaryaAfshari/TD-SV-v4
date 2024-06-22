@@ -70,15 +70,15 @@ if args.initial_model != "":
     print("Model %s loaded from previous state!" % args.initial_model)
     s = ECAPAModel(**vars(args))
     s.load_parameters(args.initial_model)
-    #epoch = 1
+    epoch = 1
 elif len(modelfiles) >= 1:
     print("Model %s loaded from previous state!" % modelfiles[-1])
     epoch = int(os.path.splitext(os.path.basename(modelfiles[-1]))[0][6:]) + 1
     s = ECAPAModel(**vars(args))
     s.load_parameters(modelfiles[-1])
 else:
-    print("Hello, I called the model ... trainECAPAModel.py")
-    #epoch = 1
+    print("Hello, I called ... trainECAPAModel.py")
+    epoch = 1
     s = ECAPAModel(**vars(args))
     print("Over calling model")
 
