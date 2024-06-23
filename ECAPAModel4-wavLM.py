@@ -1,3 +1,6 @@
+# Ya zol jalal val ekram
+#Author: MAryam Afshari
+#Date : 23.6.2024 June - 1 Tir 1403
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,16 +11,20 @@ import sys
 import tqdm
 import time
 import pickle
+import torchaudio
+from WavLM import WavLM, WavLMConfig
 
 from tools2B import *
 from loss2B import AAMsoftmax
-from model2B import ECAPA_TDNN
 
 class ECAPAModel(nn.Module):
     def __init__(self, lr, lr_decay, C, n_class, n_class_phoneme, alphaB, betaB, m, s, test_step, **kwargs):
         super(ECAPAModel, self).__init__()
-        ## ECAPA-TDNN
-        self.speaker_encoder = ECAPA_TDNN(C=C).cuda()
+        # WavLM model configuration and initialization
+        checkpoint = torch.load('/path/to/WavLM-Large.pt')  # Update with your actual path
+        cfg = WavLMConfig(checkpoint['cfg'])
+        self.speaker_encoder = WavLM(cfg).cuda()
+        self.speaker_encoder.load_state_dict(checkpoint['model'])
 
         ## Classifier
         self.speaker_loss = AAMsoftmax(n_class=n_class, m=m, s=s).cuda()
@@ -47,14 +54,14 @@ class ECAPAModel(nn.Module):
             speaker_labels = torch.LongTensor(speaker_labels).cuda()
             phoneme_labels = torch.LongTensor(phoneme_labels).cuda()
 
-            # Forward pass
-            speaker_embedding = self.speaker_encoder.forward(data.cuda(), aug=True)
-            
+            # Forward pass using WavLM
+            rep, _ = self.speaker_encoder.extract_features(data.cuda(), output_layer=self.speaker_encoder.cfg.encoder_layers, ret_layer_results=False)
+
             # Speaker loss
-            speaker_loss, speaker_acc = self.speaker_loss.forward(speaker_embedding, speaker_labels)
+            speaker_loss, speaker_acc = self.speaker_loss.forward(rep, speaker_labels)
             
             # Phoneme loss
-            phoneme_loss, phoneme_acc = self.phoneme_loss.forward(speaker_embedding, phoneme_labels)
+            phoneme_loss, phoneme_acc = self.phoneme_loss.forward(rep, phoneme_labels)
 
             # Combined loss
             combined_loss = self.alpha * speaker_loss + self.beta * phoneme_loss
@@ -115,11 +122,9 @@ class ECAPAModel(nn.Module):
                 feats = np.stack(feats, axis=0).astype(np.float)
                 data_2 = torch.FloatTensor(feats).cuda()
                 # Speaker embeddings
-                embedding_1 = self.speaker_encoder.forward(data_1, aug=False)
-                embedding_1 = F.normalize(embedding_1, p=2, dim=1)
-                embedding_2 = self.speaker_encoder.forward(data_2, aug=False)
-                embedding_2 = F.normalize(embedding_2, p=2, dim=1)
-                embeddings[file] = [embedding_1, embedding_2]
+                rep_1, _ = self.speaker_encoder.extract_features(data_1.cuda(), output_layer=self.speaker_encoder.cfg.encoder_layers, ret_layer_results=False)
+                rep_2, _ = self.speaker_encoder.extract_features(data_2.cuda(), output_layer=self.speaker_encoder.cfg.encoder_layers, ret_layer_results=False)
+                embeddings[file] = [rep_1, rep_2]
 
         scores, labels = []
 
@@ -147,61 +152,30 @@ class ECAPAModel(nn.Module):
         enrollments = {}
         lines = open(enroll_list).read().splitlines()
         lines = lines[1:]  # Skip the header row
-        embeddings = []
         for line in lines:
             parts = line.split()
             model_id = parts[0]
-            #phrase_id = parts[1]
             phrase_id = int(parts[1])  # Convert phrase_id to integer
             enroll_files = parts[3:]  # Enrollment file IDs
+            embeddings = []
             for file in enroll_files:
-                file_name = os.path.join(enroll_path, file) + ".wav"
-                try:
-                    audio, _ = sf.read(file_name)
-                except Exception as e:
-                    print(f"Error reading audio file {file_name}: {e}")
-                    continue
-                #data = torch.FloatTensor(np.stack([audio], axis=0)).cuda()
-                # try:
-                #     data = torch.FloatTensor(np.stack([audio], axis=0)).cuda()
-                # except Exception as e:
-                #     print(f"Error converting audio to tensor for file {file_name}: {e}")
-                #     continue
-
-                try:
-                    #data = torch.FloatTensor(audio).cuda().unsqueeze(0)
-                    data = torch.FloatTensor(np.stack([audio], axis=0)).cuda()
-                except Exception as e:
-                    print(f"Error converting audio to tensor for file {file_name}: {e}")
-                    continue
-
+                file_name = os.path.join(enroll_path, file)
+                file_name += ".wav"
+                audio, _ = sf.read(file_name)
+                data = torch.FloatTensor(np.stack([audio], axis=0)).cuda()
                 with torch.no_grad():
-                    #embedding = self.speaker_encoder.forward(data, aug=False)
-                    #embedding = F.normalize(embedding, p=2, dim=1)
-                    try:
-                        embedding = self.speaker_encoder.forward(data, aug=False)
-                        embedding = F.normalize(embedding, p=2, dim=1)
-                    except Exception as e:
-                        print(f"Error generating embedding for file {file_name}: {e}")
-                        continue
-                embeddings.append(embedding)
-            
-            if len(embeddings) == 0:
-                print(f"No valid embeddings found for model_id {model_id}, phrase_id {phrase_id}")
-                continue
-
+                    rep, _ = self.speaker_encoder.extract_features(data.cuda(), output_layer=self.speaker_encoder.cfg.encoder_layers, ret_layer_results=False)
+                embeddings.append(rep)
             avg_embedding = torch.mean(torch.stack(embeddings), dim=0)  # make avg of 3 enrollment file embeddings
             if model_id not in enrollments:
                 enrollments[model_id] = {}
             enrollments[model_id][phrase_id] = avg_embedding
 
-        print("After reading lines in enroll networks ...")
         os.makedirs(path_save_model, exist_ok=True)
 
         # Save enrollments using the provided path
         with open(os.path.join(path_save_model, "enrollments.pkl"), "wb") as f:
             pickle.dump(enrollments, f)
-        print("After writing lines in pkl enroll networks ...")
 
     def test_network(self, test_list, test_path, path_save_model):
         print("hello, this in test network ... ECAPAModel2B.py")
@@ -211,7 +185,7 @@ class ECAPAModel(nn.Module):
         with open(enrollments_path, "rb") as f:
             enrollments = pickle.load(f)
 
-        scores, labels = [], []
+        scores, labels = []
         lines = open(test_list).read().splitlines()
         lines = lines[1:]  # Skip the header row
         
@@ -224,53 +198,29 @@ class ECAPAModel(nn.Module):
             file_name = os.path.join(test_path, test_file)
             file_name += ".wav"
             audio, _ = sf.read(file_name)
-            #data = torch.FloatTensor(np.stack([audio], axis=0)).cuda()
-
-            try:
-                #data = torch.FloatTensor(audio).cuda().unsqueeze(0)
-                data = torch.FloatTensor(np.stack([audio], axis=0)).cuda()
-            except Exception as e:
-                print(f"Error converting audio to tensor for file {file_name}: {e}")
-                continue
-
+            data = torch.FloatTensor(np.stack([audio], axis=0)).cuda()
             
             with torch.no_grad():
-                # # Generate speaker embedding
-                # speaker_emb = self.speaker_encoder.forward(data, aug=False)
-                # speaker_emb = F.normalize(speaker_emb, p=2, dim=1)
+                # Generate speaker embedding
+                rep, _ = self.speaker_encoder.extract_features(data.cuda(), output_layer=self.speaker_encoder.cfg.encoder_layers, ret_layer_results=False)
+                speaker_emb = F.normalize(rep, p=2, dim=1)
 
-                # # Check if speaker_emb is None
-                # if speaker_emb is None:
-                #     print(f"Error: speaker_emb is None for {file_name}")
-                #     continue
-                try:
-                    # Generate speaker embedding
-                    speaker_emb = self.speaker_encoder.forward(data, aug=False)
-                    speaker_emb = F.normalize(speaker_emb, p=2, dim=1)
-                except Exception as e:
-                    print(f"Error generating speaker embedding for file {file_name}: {e}")
+                # Check if speaker_emb is None
+                if speaker_emb is None:
+                    print(f"Error: speaker_emb is None for {file_name}")
                     continue
 
-                # # Generate phrase logits
-                # phrase_logits = self.phoneme_loss(speaker_emb)
+                # Generate phrase logits
+                phrase_logits = self.phoneme_loss(speaker_emb)
 
-                # # Check if phrase_logits is None
-                # if phrase_logits is None:
-                #     print(f"Error: phrase_logits is None for {file_name}")
-                #     continue
+                # Check if phrase_logits is None
+                if phrase_logits is None:
+                    print(f"Error: phrase_logits is None for {file_name}")
+                    continue
 
-                # _, predicted_phrase_label = torch.max(phrase_logits, 1)
-                # predicted_phrase_label = predicted_phrase_label.item()
+                _, predicted_phrase_label = torch.max(phrase_logits, 1)
+                predicted_phrase_label = predicted_phrase_label.item()
                 
-                try:
-                    # Generate phrase logits
-                    phrase_logits = self.phoneme_loss(speaker_emb)
-                    _, predicted_phrase_label = torch.max(phrase_logits, 1)
-                    predicted_phrase_label = predicted_phrase_label.item()
-                except Exception as e:
-                    print(f"Error generating phrase logits for file {file_name}: {e}")
-                    continue
-
                 # Initialize predicted scores
                 predicted_speaker_score = 0
                 predicted_phrase_score = 0
